@@ -8,4 +8,5 @@ const requestSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now } // Timestamp of when the request was made
 });
 
-module.exports = mongoose.model('Request', requestSchema);
+// request.model.js
+export const ClaimedRequest = mongoose.model("ClaimedRequest", requestSchema);
