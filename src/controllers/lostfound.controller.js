@@ -264,4 +264,64 @@ export const updateClaimStatus = asyncHandler(async (req, res, next) => {
     new ApiResponse(200, claim, `Claim ${status} successfully for item "${item.name}".`)
   );
 });
+import { LostItemRequest } from '../models/lostItemRequest.model.js';
+
+export const createLostItemRequest = asyncHandler(async (req, res, next) => {
+  try {
+    const { title, description, category, landmark, name } = req.body;
+    const userId = req.user.id;
+
+    if (!title || !description || !category || !landmark || !name) {
+      return next(new ApiError(400, "All fields are required."));
+    }
+
+    let imageLocalPath;
+    if (req.files && Array.isArray(req.files.image) && req.files.image.length > 0) {
+      imageLocalPath = req.files.image[0].path;
+    }
+
+    const image = await uploadOnCloudinary(imageLocalPath);
+
+    const newRequest = await LostItemRequest.create({
+      title,
+      name,
+      description,
+      imageUrl: image?.url || "",
+      category,
+      landmark,
+      requestedBy: userId,
+    });
+
+    return res.status(201).json(new ApiResponse(201, newRequest, "Lost item request submitted successfully."));
+  } catch (error) {
+    console.error("Error creating lost item request:", error);
+    return next(new ApiError(500, "Internal server error."));
+  }
+});
+export const getMyLostRequests = asyncHandler(async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+
+    const myLostRequests = await LostItemRequest.find({ requestedBy: userId })
+      .sort({ createdAt: -1 });
+
+    return res.status(200).json(new ApiResponse(200, myLostRequests, 'Your lost item requests fetched successfully'));
+  } catch (error) {
+    console.error('Error fetching your lost item requests:', error);
+    return next(new ApiError(500, 'Internal server error.'));
+  }
+});
+export const getAllLostRequests = asyncHandler(async (req, res, next) => {
+  try {
+    const lostRequests = await LostItemRequest.find()
+      .populate('requestedBy', 'email')
+      .sort({ createdAt: -1 });
+
+    return res.status(200).json(new ApiResponse(200, lostRequests, 'All lost item requests fetched successfully'));
+  } catch (error) {
+    console.error('Error fetching lost item requests:', error);
+    return next(new ApiError(500, 'Internal server error.'));
+  }
+});
+
 

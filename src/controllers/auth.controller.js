@@ -25,6 +25,8 @@ const generateAccessAndRefreshTokens = async (userId) => {
 // 🔹 Register User
 const registerUser = asyncHandler(async (req, res) => {
     const { fullName, email, username, password, confirmPassword, role, secretKey } = req.body;
+console.log("req.body:", req.body);
+console.log("req.files:", req.files);
 
     if ([fullName, email, username, password, confirmPassword, role].some((field) => !field?.trim())) {
         throw new ApiError(400, "All fields are required");

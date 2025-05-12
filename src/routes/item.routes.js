@@ -7,7 +7,11 @@ import {
   getMyListings,
   getMyRequests,
   updateClaimStatus,
-  getClaimsForMyItem
+  getClaimsForMyItem,
+  getMyLostRequests,
+  getAllLostRequests,
+  createLostItemRequest
+
 } from "../controllers/lostfound.controller.js"; // Importing relevant controllers
 import { verifyJWT } from "../middlewares/auth.middleware.js"; // Middleware to verify JWT for protected routes
 import { upload } from "../middlewares/multer.middleware.js"; // Middleware for file uploads
@@ -45,5 +49,9 @@ router.route("/my-requests").get(verifyJWT, getMyRequests);
 // Route for updating the claim status 
 router.route("/update-claim-status").post(verifyJWT, updateClaimStatus);
 router.route('/claims').post( verifyJWT, getClaimsForMyItem);
+router.post('/request', verifyJWT, upload.fields([{ name: 'image', maxCount: 1 }]), createLostItemRequest);
+router.get('/requests', verifyJWT, getAllLostRequests);
+router.get('/my-requests', verifyJWT, getMyLostRequests);
+
 
 export default router;
