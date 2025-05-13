@@ -23,9 +23,11 @@ app.use(cookieParser());  // Handling secure cookies
 // Import routes
 import authRouter from "./routes/auth.routes.js";  // Importing authentication routes
 import itemRouter from "./routes/item.routes.js";  // Importing item-related routes (new routes as per your previous request)
+import complaintRouter from "./routes/complaint.routes.js"
 
 app.use("/api/v1/auth", authRouter);  // Authentication routes
 app.use("/api/v1/items", itemRouter);  // Item-related routes
+app.use("/api/v1/comp", complaintRouter);
 
 // ✅ Fix: Export `app` correctly
 export { app };

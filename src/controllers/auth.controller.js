@@ -3,8 +3,9 @@ import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { uploadOnCloudinary } from "../utils/cloudinary.js";
-import jwt from "jsonwebtoken"; 
+import jwt from "jsonwebtoken";
 
+// 🔸 Token generator
 const generateAccessAndRefreshTokens = async (userId) => {
     try {
         const user = await User.findById(userId);
@@ -18,15 +19,15 @@ const generateAccessAndRefreshTokens = async (userId) => {
 
         return { accessToken, refreshToken };
     } catch (error) {
-        throw new ApiError(500, "Error generating tokens");
+        throw new ApiError(500, error?.message || "Error generating tokens");
     }
 };
 
-// 🔹 Register User
+// 🔸 Register
 const registerUser = asyncHandler(async (req, res) => {
     const { fullName, email, username, password, confirmPassword, role, secretKey } = req.body;
-console.log("req.body:", req.body);
-console.log("req.files:", req.files);
+    console.log("req.body:", req.body);
+    console.log("req.files:", req.files);
 
     if ([fullName, email, username, password, confirmPassword, role].some((field) => !field?.trim())) {
         throw new ApiError(400, "All fields are required");
@@ -39,10 +40,16 @@ console.log("req.files:", req.files);
     const existingUser = await User.findOne({ $or: [{ username }, { email }] });
     if (existingUser) throw new ApiError(409, "User with email or username already exists");
 
-    // If registering as an admin, verify the secret key
+    // Admin and SuperAdmin logic
+    let isSuperAdmin = false;
+
     if (role === 'admin') {
-        if (!secretKey || secretKey !== process.env.ADMIN_SECRET_KEY) {
+        if (!secretKey || (secretKey !== process.env.ADMIN_SECRET_KEY && secretKey !== process.env.SUPERADMIN_SECRET_KEY)) {
             throw new ApiError(403, "Invalid or missing secret key");
+        }
+
+        if (secretKey === process.env.SUPERADMIN_SECRET_KEY) {
+            isSuperAdmin = true;
         }
     }
 
@@ -58,7 +65,8 @@ console.log("req.files:", req.files);
         username,
         password,
         avatar: avatar.url,
-        role // Add role while creating user
+        role,
+        isSuperAdmin
     });
 
     const createdUser = await User.findById(user._id).select("-password -refreshToken");
@@ -67,7 +75,7 @@ console.log("req.files:", req.files);
     res.status(201).json(new ApiResponse(200, createdUser, "User registered successfully"));
 });
 
-// 🔹 Login User
+// 🔸 Login
 const loginUser = asyncHandler(async (req, res) => {
     const { email, username, password } = req.body;
 
@@ -86,21 +94,25 @@ const loginUser = asyncHandler(async (req, res) => {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
         sameSite: "Strict",
+        maxAge: 7 * 24 * 60 * 60 * 1000
     };
 
-    // Add role to the response
     return res
         .status(200)
         .cookie("accessToken", accessToken, options)
         .cookie("refreshToken", refreshToken, options)
-        .json(new ApiResponse(200, { user: loggedInUser, accessToken, refreshToken, role: loggedInUser.role }, "User logged in successfully"));
+        .json(new ApiResponse(200, {
+            user: loggedInUser,
+            accessToken,
+            refreshToken,
+            role: loggedInUser.role,
+            isSuperAdmin: loggedInUser.isSuperAdmin
+        }, "User logged in successfully"));
 });
 
-// 🔹 Logout User
+// 🔸 Logout
 const logoutUser = asyncHandler(async (req, res) => {
-    if (!req.user?._id) {
-        throw new ApiError(401, "Unauthorized request");
-    }
+    if (!req.user?._id) throw new ApiError(401, "Unauthorized request");
 
     await User.findByIdAndUpdate(req.user._id, {
         $unset: { refreshToken: 1 }
@@ -119,13 +131,10 @@ const logoutUser = asyncHandler(async (req, res) => {
         .json(new ApiResponse(200, {}, "User logged out successfully"));
 });
 
-// 🔹 Refresh Access Token
+// 🔸 Refresh Token
 const refreshAccessToken = asyncHandler(async (req, res) => {
     const incomingRefreshToken = req.cookies.refreshToken || req.body.refreshToken;
-
-    if (!incomingRefreshToken) {
-        throw new ApiError(401, "Unauthorized request");
-    }
+    if (!incomingRefreshToken) throw new ApiError(401, "Unauthorized request");
 
     try {
         const decodedToken = jwt.verify(incomingRefreshToken, process.env.REFRESH_TOKEN_SECRET);
@@ -136,26 +145,30 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
             throw new ApiError(401, "Refresh token is expired or used");
         }
 
+        const { accessToken, refreshToken: newRefreshToken } = await generateAccessAndRefreshTokens(user._id);
+
         const options = {
             httpOnly: true,
             secure: process.env.NODE_ENV === "production",
-            sameSite: "Strict"
+            sameSite: "Strict",
+            maxAge: 7 * 24 * 60 * 60 * 1000
         };
-
-        const { accessToken, refreshToken: newRefreshToken } = await generateAccessAndRefreshTokens(user._id);
 
         return res
             .status(200)
             .cookie("accessToken", accessToken, options)
             .cookie("refreshToken", newRefreshToken, options)
-            .json(new ApiResponse(200, { accessToken, refreshToken: newRefreshToken }, "Access token refreshed"));
+            .json(new ApiResponse(200, {
+                accessToken,
+                refreshToken: newRefreshToken
+            }, "Access token refreshed"));
     } catch (error) {
         throw new ApiError(401, error?.message || "Invalid refresh token");
     }
 });
 
-// 🔹 Change Current Password
-const changeCurrentPassword = asyncHandler(async(req, res) => {
+// 🔸 Change Password
+const changeCurrentPassword = asyncHandler(async (req, res) => {
     const { oldPassword, newPassword } = req.body;
 
     if (!oldPassword || !newPassword) {
@@ -166,9 +179,7 @@ const changeCurrentPassword = asyncHandler(async(req, res) => {
     if (!user) throw new ApiError(404, "User not found");
 
     const isPasswordCorrect = await user.isPasswordCorrect(oldPassword);
-    if (!isPasswordCorrect) {
-        throw new ApiError(400, "Invalid old password");
-    }
+    if (!isPasswordCorrect) throw new ApiError(400, "Invalid old password");
 
     user.password = newPassword;
     await user.save({ validateBeforeSave: false });
@@ -176,4 +187,10 @@ const changeCurrentPassword = asyncHandler(async(req, res) => {
     return res.status(200).json(new ApiResponse(200, {}, "Password changed successfully"));
 });
 
-export { loginUser, registerUser, logoutUser, refreshAccessToken, changeCurrentPassword };
+export {
+    registerUser,
+    loginUser,
+    logoutUser,
+    refreshAccessToken,
+    changeCurrentPassword
+};
