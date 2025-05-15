@@ -29,10 +29,9 @@ const createPlacement = asyncHandler(async (req, res) => {
 
 // 2. Add update to a placement
 const addPlacementUpdate = asyncHandler(async (req, res) => {
-  const { placementId } = req.params; // Get placementId from params
-  const { updateText, roundType } = req.body; // Ensure roundType is also passed
+  const { placementId } = req.params;
+  const { updateText, roundType } = req.body;
 
-  // Validate input
   if (!updateText || updateText.trim() === "") {
     throw new ApiError(400, "Update text is required");
   }
@@ -41,43 +40,47 @@ const addPlacementUpdate = asyncHandler(async (req, res) => {
     throw new ApiError(400, "RoundType is required");
   }
 
-  // Ensure placementId is valid
   const placement = await Placement.findById(placementId);
   if (!placement) {
     throw new ApiError(404, "Placement not found");
   }
 
-  // Create new update
   const update = await Update.create({
     placement: placementId,
     updateText,
-    postedBy: req.user._id, // User must be authenticated
-    roundType, // Pass roundType to the Update model
+    postedBy: req.user._id,
+    roundType,
   });
 
-  // Add the update to the placement's updates array
   await Placement.findByIdAndUpdate(placementId, {
     $push: { updates: update._id },
   });
 
-  // Send notifications to shortlisted students
-  const shortlistedStudents = placement.selectedStudents;
+  // ✅ Determine notification recipients based on roundType
+  let notifyStudentIds = [];
 
-  // Using for...of loop to handle async await properly
-  for (const studentId of shortlistedStudents) {
-    const message = `A new update has been posted for the placement: ${placement.companyName}. Please check the placement details.`;
+  if (roundType === "common") {
+    // Notify all registered students
+    const registrations = await PlacementRegistration.find({ placement: placementId });
+    notifyStudentIds = registrations.map((r) => r.student);
+  } else if (roundType === "round-specific") {
+    // Notify only shortlisted students
+    notifyStudentIds = placement.selectedStudents;
+  }
 
+  const message = `A new update has been posted for the placement: ${placement.companyName}. Please check the placement details.`;
+
+  for (const studentId of notifyStudentIds) {
     try {
-      // Create the notification for each shortlisted student
       await Notification.create({ userId: studentId, message });
     } catch (error) {
       console.error(`Error sending notification to student ${studentId}: ${error.message}`);
     }
   }
 
-  // Respond with success and the new update
   res.status(201).json(new ApiResponse(201, update, "Update added to placement"));
 });
+
 
 // 3. Get all placements for a student (with registrationStatus)
 const getAllPlacementsForStudent = asyncHandler(async (req, res) => {
@@ -112,21 +115,8 @@ const getPlacementDetails = asyncHandler(async (req, res) => {
   
   const { placementId } = req.params;
   const userId = req.user._id;
-
-  // Check student registration status
-  const registration = await PlacementRegistration.findOne({
-    placement: placementId,
-    student: userId,
-  });
-
-  if (!registration) {
-    throw new ApiError(404, "Student not registered for this placement");
-  }
-
-  // Determine student's application status
-  const isShortlisted = registration.status === "shortlisted";
-
-  // Fetch placement details with updates
+  
+  // Fetch placement with updates populated
   const placement = await Placement.findById(placementId)
     .populate({
       path: "updates",
@@ -136,36 +126,63 @@ const getPlacementDetails = asyncHandler(async (req, res) => {
         select: "name email role",
       },
     })
-    .lean(); // Convert to plain JavaScript object
-
+    .lean();
+  
   if (!placement) {
     throw new ApiError(404, "Placement not found");
   }
-
-  // Categorize updates
-  const commonUpdates = placement.updates.filter(
-    update => update.roundType === "common"
-  );
-  const roundSpecificUpdates = placement.updates.filter(
-    update => update.roundType === "round-specific"
-  );
-
-  // Prepare filtered updates based on status
-  // All students get common updates, but only shortlisted students get round-specific updates
-  let filteredUpdates = [...commonUpdates];
   
-  if (isShortlisted) {
-    filteredUpdates = [...filteredUpdates, ...roundSpecificUpdates];
+  // Check if student is registered
+  const registration = await PlacementRegistration.findOne({
+    placement: placementId,
+    student: userId,
+  });
+  
+  // Allow admins to view all updates
+  const isAdmin = req.user.role === "admin" || req.user.role === "superadmin" || req.user?.isSuperAdmin;
+  
+  if (!registration && !isAdmin) {
+    throw new ApiError(404, "Student not registered for this placement");
   }
-
+  
+  // Check if student is shortlisted (be more explicit with comparison)
+  const isShortlisted = registration && registration.status === "shortlisted";
+  
+  // Categorize updates with explicit check for roundType value
+  const updates = placement.updates || [];
+  
+  // Filter updates based on user status with a more robust check
+  let filteredUpdates;
+  if (isAdmin || isShortlisted) {
+    // Admins and shortlisted students see all updates
+    filteredUpdates = updates;
+  } else {
+    // Non-shortlisted students only see common updates
+    filteredUpdates = updates.filter(update => update.roundType === "common");
+  }
+  
+  // Enhanced debugging
+  console.log({
+    userId,
+    userRole: req.user.role,
+    isAdmin,
+    registrationStatus: registration?.status,
+    isShortlisted,
+    totalUpdates: updates.length,
+    commonUpdates: updates.filter(u => u.roundType === "common").length,
+    roundSpecificUpdates: updates.filter(u => u.roundType === "round-specific").length,
+    filteredUpdates: filteredUpdates.length
+  });
+  
+  // Construct response with filtered updates
   const responseData = {
     ...placement,
-    updates: filteredUpdates
+    updates: filteredUpdates,
   };
-
-  // Send response using the standard ApiResponse format for consistency
+  
   res.status(200).json(new ApiResponse(200, responseData, "Placement details retrieved"));
 });
+
 
 // 5. Delete a placement
 const deletePlacement = asyncHandler(async (req, res) => {
@@ -326,29 +343,14 @@ const getAllRegisteredStudentsForPlacement = asyncHandler(async (req, res) => {
     throw new ApiError(404, "Placement not found");
   }
 
-  // Find all registrations for the given placement
-  const registrations = await PlacementRegistration.find({ placement: placementId }).populate("student");
+  // Find all registrations for the placement
+  const registrations = await PlacementRegistration.find({ placement: placementId })
+    .populate("student", "name email rollNumber branch year") // Populate necessary student fields
+    .lean();
 
-  // If no registrations found for the given placement
-  if (!registrations.length) {
-    return res.status(200).json(new ApiResponse(200, [], "No students have registered for this placement yet"));
-  }
-
-  // Create a list of students with their registration status and other details
-  const studentDetails = registrations.map(registration => {
-    const student = registration.student;
-    return {
-      studentId: student._id,
-      name: student.name,
-      email: student.email,
-      registrationStatus: registration.status,
-      resumeLink: registration.resumeLink,
-      googleFormLink: registration.googleFormLink
-    };
-  });
-
-  res.status(200).json(new ApiResponse(200, studentDetails, "Registered students retrieved successfully"));
+  res.status(200).json(new ApiResponse(200, registrations, "Registered students retrieved successfully"));
 });
+
 
 export {
   createPlacement,

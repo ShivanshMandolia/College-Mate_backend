@@ -22,8 +22,8 @@ const registrationSchema = new Schema(
     },
     status: {
       type: String,
-      enum: ["pending", "shortlisted", "rejected"],
-      default: "pending", // Can be "shortlisted" or "rejected" as well
+      enum: [ "shortlisted", "rejected"],
+      default: "rejected", // Can be "shortlisted" or "rejected" as well
     },
   },
   { timestamps: true }
