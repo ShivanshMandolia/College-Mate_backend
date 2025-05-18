@@ -323,5 +323,91 @@ export const getAllLostRequests = asyncHandler(async (req, res, next) => {
     return next(new ApiError(500, 'Internal server error.'));
   }
 });
+// Controller for getting details of a specific found item
+export const getFoundItemById = asyncHandler(async (req, res, next) => {
+  try {
+    const { itemId } = req.params;
+
+    if (!itemId) {
+      return next(new ApiError(400, 'Item ID is required'));
+    }
+
+    const foundItem = await FoundItem.findById(itemId)
+      .populate('foundBy', 'firstName lastName email')
+      .populate('claimedBy', 'firstName lastName email');
+
+    if (!foundItem) {
+      return next(new ApiError(404, 'Found item not found'));
+    }
+
+    return res.status(200).json(
+      new ApiResponse(200, foundItem, 'Found item details fetched successfully')
+    );
+  } catch (error) {
+    console.error('Error fetching found item details:', error);
+    return next(new ApiError(500, 'Internal server error.'));
+  }
+});
+
+// Controller for getting details of a specific lost item request
+export const getLostItemRequestById = asyncHandler(async (req, res, next) => {
+  try {
+    const { requestId } = req.params;
+
+    if (!requestId) {
+      return next(new ApiError(400, 'Request ID is required'));
+    }
+
+    const lostItemRequest = await LostItemRequest.findById(requestId)
+      .populate('requestedBy', 'firstName lastName email');
+
+    if (!lostItemRequest) {
+      return next(new ApiError(404, 'Lost item request not found'));
+    }
+
+    return res.status(200).json(
+      new ApiResponse(200, lostItemRequest, 'Lost item request details fetched successfully')
+    );
+  } catch (error) {
+    console.error('Error fetching lost item request details:', error);
+    return next(new ApiError(500, 'Internal server error.'));
+  }
+});
+
+// Controller for getting details of a specific claim request
+export const getClaimRequestById = asyncHandler(async (req, res, next) => {
+  try {
+    const { claimId } = req.params;
+    const userId = req.user.id;
+
+    if (!claimId) {
+      return next(new ApiError(400, 'Claim ID is required'));
+    }
+
+    const claimRequest = await ClaimedRequest.findById(claimId)
+      .populate('userId', 'firstName lastName email')
+      .populate('itemId');
+
+    if (!claimRequest) {
+      return next(new ApiError(404, 'Claim request not found'));
+    }
+
+    // Check if user is authorized to view this claim
+    // Either the claim belongs to them or they own the item being claimed
+    const isClaimOwner = claimRequest.userId._id.toString() === userId;
+    const isItemOwner = claimRequest.itemId.foundBy.toString() === userId;
+
+    if (!isClaimOwner && !isItemOwner) {
+      return next(new ApiError(403, 'Not authorized to view this claim request'));
+    }
+
+    return res.status(200).json(
+      new ApiResponse(200, claimRequest, 'Claim request details fetched successfully')
+    );
+  } catch (error) {
+    console.error('Error fetching claim request details:', error);
+    return next(new ApiError(500, 'Internal server error.'));
+  }
+});
 
 
