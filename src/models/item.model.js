@@ -7,6 +7,8 @@ const itemSchema = new mongoose.Schema({
   landmark: { type: String }, // Optional, location where the item was found
   status: { type: String, enum: ['found', 'claimed', 'removed'], default: 'found' }, // Current status of the item
   createdAt: { type: Date, default: Date.now }, // Date when the item was posted as found
+  claimedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, // ✅ Add this line
+
 });
 
 export const FoundItem = mongoose.model("FoundItem", itemSchema);
