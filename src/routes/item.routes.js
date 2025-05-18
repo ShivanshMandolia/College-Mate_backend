@@ -1,74 +1,58 @@
 import { Router } from "express";
 import {
   createFoundItem,
-  createClaimedRequest,
-  getNotifications,
+  createLostItem,
   getAllFoundItems,
-  getMyListings,
-  getMyRequests,
-  updateClaimStatus,
-  getClaimsForMyItem,
-  getMyLostRequests,
-  getAllLostRequests,
-  createLostItemRequest,
-  getFoundItemById,
-  getLostItemRequestById,
-  getClaimRequestById
-} from "../controllers/lostfound.controller.js"; // Importing relevant controllers
-import { verifyJWT } from "../middlewares/auth.middleware.js"; // Middleware to verify JWT for protected routes
-import { upload } from "../middlewares/multer.middleware.js"; // Middleware for file uploads
+  getAllLostItems,
+  getFoundItemDetail,
+  getLostItemDetail,
+  deleteFoundItem,
+  deleteLostItem,
+  getMyFoundListings,
+  getMyLostListings,
+} from "../controllers/lostfound.controller.js";
+
+import { verifyJWT } from "../middlewares/auth.middleware.js";
+import { upload } from "../middlewares/multer.middleware.js";
 
 const router = Router();
 
-// Route for creating a new found item (protected route)
+// Create a new found item (protected, with image upload)
 router.route("/found-item").post(
-  verifyJWT, // Only authenticated users can create a found item
-  upload.fields([{ name: "image", maxCount: 1 }]), // Handling image upload
+  verifyJWT,
+  upload.fields([{ name: "image", maxCount: 1 }]),
   createFoundItem
 );
 
-// Route for creating a claimed request 
-router.route("/claimed-request").post(
-  verifyJWT, // Only authenticated users can create a claimed request
-  upload.fields([{ name: "image", maxCount: 1 }]), // Handling image upload for proof
-  createClaimedRequest
+// Create a new lost item request (protected, with image upload)
+router.route("/lost-item").post(
+  verifyJWT,
+  upload.fields([{ name: "image", maxCount: 1 }]),
+  createLostItem
 );
 
-// Route for fetching notifications
-router.route("/notifications").get(verifyJWT, getNotifications);
-
-// Route for fetching all found items (public route)
+// Get all found items (public)
 router.route("/found-items").get(getAllFoundItems);
 
-// Route for getting details of a specific found item
-router.route("/found-item/:itemId").get(getFoundItemById);
+// Get all lost items (public)
+router.route("/lost-items").get(getAllLostItems);
 
-// Route for handling request actions (approve/reject)
-// Route for fetching all listings reported by the logged-in user
-router.route("/my-listings").get(verifyJWT, getMyListings);
+// Get detail of a specific found item (public)
+router.route("/found-item/:id").get(getFoundItemDetail);
 
-// Route for fetching all claims made by the logged-in user
-router.route("/my-requests").get(verifyJWT, getMyRequests);
+// Get detail of a specific lost item (public)
+router.route("/lost-item/:id").get(getLostItemDetail);
 
-// Route for updating the claim status 
-router.route("/update-claim-status").post(verifyJWT, updateClaimStatus);
+// Delete a found item (protected, only owner)
+router.route("/found-item/:id").delete(verifyJWT, deleteFoundItem);
 
-// Route for getting claims for a specific item
-router.route('/claims').post(verifyJWT, getClaimsForMyItem);
+// Delete a lost item (protected, only owner)
+router.route("/lost-item/:id").delete(verifyJWT, deleteLostItem);
 
-// Route for getting details of a specific claim request
-router.route("/claim/:claimId").get(verifyJWT, getClaimRequestById);
+// Get found items posted by logged-in user
+router.route("/my-found-listings").get(verifyJWT, getMyFoundListings);
 
-// Route for creating a lost item request
-router.post('/request', verifyJWT, upload.fields([{ name: 'image', maxCount: 1 }]), createLostItemRequest);
-
-// Route for getting all lost item requests
-router.get('/requests', verifyJWT, getAllLostRequests);
-
-// Route for getting lost item requests by the logged-in user
-router.get('/my-lost-requests', verifyJWT, getMyLostRequests);
-
-// Route for getting details of a specific lost item request
-router.route("/lost-request/:requestId").get(getLostItemRequestById);
+// Get lost items posted by logged-in user
+router.route("/my-lost-listings").get(verifyJWT, getMyLostListings);
 
 export default router;
