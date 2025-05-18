@@ -1,14 +1,16 @@
 import mongoose from "mongoose";
+
 const itemSchema = new mongoose.Schema({
   name: { type: String, required: true }, // Name of the item
-  description: { type: String }, // Optional description of the item
-  imageUrl: { type: String }, // URL of the image of the item (optional)
-  foundBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }, // The user who found the item
-  landmark: { type: String }, // Optional, location where the item was found
-  status: { type: String, enum: ['found', 'claimed', 'removed'], default: 'found' }, // Current status of the item
-  createdAt: { type: Date, default: Date.now }, // Date when the item was posted as found
-  claimedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, // ✅ Add this line
-
+  description: { type: String }, // Optional description
+  imageUrl: { type: String }, // Optional image URL
+  foundBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }, // User who found the item
+  landmark: { type: String }, // Location found
+  status: { type: String, enum: ['found', 'claimed', 'removed'], default: 'found' }, // Status of item
+  createdAt: { type: Date, default: Date.now },
+  claimedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, // User who claimed it, optional
+}, {
+  timestamps: true // Adds createdAt and updatedAt automatically
 });
 
 export const FoundItem = mongoose.model("FoundItem", itemSchema);
