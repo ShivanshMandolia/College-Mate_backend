@@ -77,39 +77,41 @@ export const getAllComplaints = asyncHandler(async (req, res, next) => {
 
 export const updateComplaintStatus = asyncHandler(async (req, res, next) => {
   const { complaintId, status } = req.body;
-  const userId = req.user.id;  // Ensure this references the user object in req.user
+  const userId = req.user.id;
   const user = await User.findById(userId);
-  // ✅ Valid statuses (match your schema enums exactly)
+
   const validStatuses = ["pending", "in-progress", "resolved", "rejected"];
   if (!validStatuses.includes(status)) {
     return next(new ApiError(400, "Invalid status value."));
   }
 
-  // ✅ Fetch complaint and populate the user who raised it
   const complaint = await Complaint.findById(complaintId)
-    .populate("createdBy")  // Ensure 'createdBy' is populated
-    .populate("assignedTo"); // Optional: Populate assignedTo if you want to check the assigned admin
+    .populate("createdBy")
+    .populate("assignedTo");
+
   if (!complaint) {
     return next(new ApiError(404, "Complaint not found."));
   }
 
-  // ✅ Admins can only update their assigned complaints
-  if (req.user.role === "admin"&&!user.isSuperAdmin) {
-    // Ensure that only assigned complaints are updated by admins
-    if (!complaint.assignedTo || complaint.assignedTo.toString() !== userId) {
-      return next(new ApiError(403, "Not authorized to update this complaint."));
+  // SuperAdmin can update any complaint
+  if (user.isSuperAdmin) {
+    complaint.status = status;
+  }
+  // Admin can update only their assigned complaints
+  else if (req.user.role === "admin") {
+    if (complaint.assignedTo && complaint.assignedTo._id.toString() === userId) {
+      complaint.status = status;
+    } else {
+      return next(new ApiError(403, "You are not authorized to update this complaint."));
     }
+  } 
+  // Other users cannot update status
+  else {
+    return next(new ApiError(403, "Only admins can update complaint status."));
   }
 
-  // ✅ Allow superadmin to update any complaint without restrictions
-else{
- complaint.status = status;
   await complaint.save();
-}
-  // ✅ Update the status
- 
 
-  // ✅ Notify the user who raised the complaint
   await sendNotification(
     complaint.createdBy._id,
     `Your complaint "${complaint.title}" status has been updated to "${status}".`
@@ -119,7 +121,6 @@ else{
     .status(200)
     .json(new ApiResponse(200, complaint, "Complaint status updated."));
 });
-
 
 // Delete complaint (only user who raised it can delete)
 export const deleteComplaint = asyncHandler(async (req, res, next) => {
