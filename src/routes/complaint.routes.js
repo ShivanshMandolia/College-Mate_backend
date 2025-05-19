@@ -6,7 +6,8 @@ import {
   updateComplaintStatus,
   deleteComplaint,
   assignComplaintToAdmin,
-  getComplaintNotifications
+  getComplaintNotifications,
+   getAdminComplaintStatus   
 } from "../controllers/complaint.controller.js"; // Importing relevant controllers
 import { verifyJWT } from "../middlewares/auth.middleware.js"; // Middleware to verify JWT for protected routes
 import { upload } from "../middlewares/multer.middleware.js"; // Middleware for file uploads
@@ -26,6 +27,8 @@ router.route("/my-complaints").get(verifyJWT, getMyComplaints);
 
 // Route for fetching all complaints (admin/authority)
 router.route("/all-complaints").get(verifyJWT, getAllComplaints);
+// Route for fetching the current status (busy/free) of all admins (accessible to superadmins)
+router.route("/admin-status").get(verifyJWT, getAdminComplaintStatus);
 
 // Route for updating the status of a complaint (admin/authority)
 router.route("/update-complaint-status").post(verifyJWT, updateComplaintStatus);
