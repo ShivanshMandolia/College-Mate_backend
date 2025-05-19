@@ -140,9 +140,11 @@ export const deleteComplaint = asyncHandler(async (req, res, next) => {
 });
 
 
-// Assign complaint to admin (Only superadmin)
+
+
+  // Assign complaint to admin (Only superadmin) - using req.params
 export const assignComplaintToAdmin = asyncHandler(async (req, res, next) => {
-  const { complaintId, assignedTo } = req.body;
+  const { complaintId, assignedTo } = req.params;
   const currentUser = await User.findById(req.user.id);
 
   if (!currentUser.isSuperAdmin) {
@@ -150,7 +152,7 @@ export const assignComplaintToAdmin = asyncHandler(async (req, res, next) => {
   }
 
   if (!complaintId || !assignedTo) {
-    return next(new ApiError(400, "complaintId and assignedTo are required"));
+    return next(new ApiError(400, "complaintId and assignedTo are required in params"));
   }
 
   const complaint = await Complaint.findById(complaintId);
@@ -165,7 +167,7 @@ export const assignComplaintToAdmin = asyncHandler(async (req, res, next) => {
 
   complaint.assignedBy = currentUser._id;
   complaint.assignedTo = newAdmin._id;
-  complaint.status = "in-progress"; // fixed typo: was "in_progress"
+  complaint.status = "in-progress";
   await complaint.save();
 
   await sendNotification(
@@ -177,6 +179,7 @@ export const assignComplaintToAdmin = asyncHandler(async (req, res, next) => {
     .status(200)
     .json(new ApiResponse(200, complaint, "Complaint assigned successfully."));
 });
+
 export const getAdminComplaintStatus = asyncHandler(async (req, res, next) => {
   const userId = req.user.id;
   const currentUser = await User.findById(userId);
@@ -212,6 +215,23 @@ export const getAdminComplaintStatus = asyncHandler(async (req, res, next) => {
     .status(200)
     .json(new ApiResponse(200, statusList, "Admin statuses fetched successfully."));
 });
+// Get details of a particular complaint using req.params
+export const getComplaintById = asyncHandler(async (req, res, next) => {
+  const { complaintId } = req.params;
+
+  const complaint = await Complaint.findById(complaintId)
+    .populate("createdBy", "name email")
+    .populate("assignedTo", "name email");
+
+  if (!complaint) {
+    return next(new ApiError(404, "Complaint not found"));
+  }
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, complaint, "Complaint details fetched successfully."));
+});
+
 
 
 
