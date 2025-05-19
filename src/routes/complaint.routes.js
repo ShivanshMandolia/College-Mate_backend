@@ -5,46 +5,59 @@ import {
   getAllComplaints,
   updateComplaintStatus,
   deleteComplaint,
-  assignComplaintToAdmin,
+  assignComplaintToAdmin, // uses params for complaintId and assignedTo
   getComplaintNotifications,
-   getAdminComplaintStatus   
-} from "../controllers/complaint.controller.js"; // Importing relevant controllers
-import { verifyJWT } from "../middlewares/auth.middleware.js"; // Middleware to verify JWT for protected routes
-import { upload } from "../middlewares/multer.middleware.js"; // Middleware for file uploads
+  getAdminComplaintStatus,
+  getComplaintById
+} from "../controllers/complaint.controller.js";
+
+import { verifyJWT } from "../middlewares/auth.middleware.js";
+import { upload } from "../middlewares/multer.middleware.js";
 import Complaint from "../models/complaint.model.js";
+import ApiError from "../utils/ApiError.js";
+import ApiResponse from "../utils/ApiResponse.js";
 
 const router = Router();
 
-// Route for creating a new complaint (protected route)
-router.route("/complaints").post(
-  verifyJWT, // Only authenticated users can create a complaint
-  upload.fields([{ name: "image", maxCount: 1 }]), // Handling image upload for complaints
+// Create complaint (with optional image)
+router.post(
+  "/complaints",
+  verifyJWT,
+  upload.fields([{ name: "image", maxCount: 1 }]),
   createComplaint
 );
 
-// Route for getting all complaints created by the logged-in user (protected route)
-router.route("/my-complaints").get(verifyJWT, getMyComplaints);
+// Get logged-in user's complaints
+router.get("/my-complaints", verifyJWT, getMyComplaints);
 
-// Route for fetching all complaints (admin/authority)
-router.route("/all-complaints").get(verifyJWT, getAllComplaints);
-// Route for fetching the current status (busy/free) of all admins (accessible to superadmins)
-router.route("/admin-status").get(verifyJWT, getAdminComplaintStatus);
+// Get all complaints (admin/authority)
+router.get("/all-complaints", verifyJWT, getAllComplaints);
 
-// Route for updating the status of a complaint (admin/authority)
-router.route("/update-complaint-status").post(verifyJWT, updateComplaintStatus);
+// Get admin availability status
+router.get("/admin-status", verifyJWT, getAdminComplaintStatus);
 
-// Route for deleting a complaint (protected route)
-router.route("/complaints/:complaintId").delete(verifyJWT, deleteComplaint);
+// Update complaint status (admin only)
+router.post("/update-complaint-status", verifyJWT, updateComplaintStatus);
 
-// Route for assigning a complaint to an admin (admin/authority)
-router.route("/assign-complaint").post(verifyJWT, assignComplaintToAdmin);
+// Delete complaint
+router.delete("/complaints/:complaintId", verifyJWT, deleteComplaint);
 
-// Route for fetching notifications for a user (protected route)
-router.route("/notifications").get(verifyJWT, getComplaintNotifications);
+// ✅ Assign complaint to admin (updated controller using params)
+router.post(
+  "/assign-complaint/:complaintId/:assignedTo",
+  verifyJWT,
+  assignComplaintToAdmin
+);
 
-// Route for searching complaints (optional: could be a public or protected route)
-router.route("/search-complaints").get(async (req, res, next) => {
-  const { query } = req.query; // Query parameter for searching complaints (e.g., title, category)
+// Get complaint details by ID
+router.get("/complaints/:complaintId", verifyJWT, getComplaintById);
+
+// Get notifications for current user
+router.get("/notifications", verifyJWT, getComplaintNotifications);
+
+// Search complaints by title or category
+router.get("/search-complaints", async (req, res, next) => {
+  const { query } = req.query;
 
   if (!query) {
     return next(new ApiError(400, "Query parameter is required"));
@@ -58,7 +71,9 @@ router.route("/search-complaints").get(async (req, res, next) => {
       ]
     }).sort({ createdAt: -1 });
 
-    return res.status(200).json(new ApiResponse(200, complaints, "Complaints searched successfully"));
+    return res.status(200).json(
+      new ApiResponse(200, complaints, "Complaints searched successfully")
+    );
   } catch (error) {
     return next(new ApiError(500, "Error searching complaints"));
   }
