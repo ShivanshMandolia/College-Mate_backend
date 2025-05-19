@@ -177,6 +177,42 @@ export const assignComplaintToAdmin = asyncHandler(async (req, res, next) => {
     .status(200)
     .json(new ApiResponse(200, complaint, "Complaint assigned successfully."));
 });
+export const getAdminComplaintStatus = asyncHandler(async (req, res, next) => {
+  const userId = req.user.id;
+  const currentUser = await User.findById(userId);
+
+  if (!currentUser.isSuperAdmin) {
+    return next(new ApiError(403, "Only superadmins can view admin statuses."));
+  }
+
+  const admins = await User.find({ role: "admin" });
+
+  const statusList = await Promise.all(
+    admins.map(async (admin) => {
+      const currentComplaint = await Complaint.findOne({
+        assignedTo: admin._id,
+        status: { $ne: "resolved" }, // still pending or in-progress
+      });
+
+      return {
+        adminId: admin._id,
+        name: admin.name,
+        email: admin.email,
+        status: currentComplaint ? "busy" : "free",
+        currentComplaint: currentComplaint ? {
+          title: currentComplaint.title,
+          status: currentComplaint.status,
+          complaintId: currentComplaint._id
+        } : null
+      };
+    })
+  );
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, statusList, "Admin statuses fetched successfully."));
+});
+
 
 
 // Get notifications for current user
