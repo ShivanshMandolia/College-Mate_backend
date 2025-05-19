@@ -11,6 +11,10 @@ const complaintSchema = new Schema(
       type: String,
       required: true,
     },
+     landmark: {
+      type: String,
+      required: true,
+    },
     category: {
       type: String,
       enum: ["hostel", "wifi", "classroom", "mess", "other"],
