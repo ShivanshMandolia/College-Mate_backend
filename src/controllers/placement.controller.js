@@ -272,58 +272,39 @@ const updateStudentStatus = asyncHandler(async (req, res) => {
 });
 
 // 8. Student registers for placement
-const registerForPlacement = asyncHandler(async (req, res) => {
-  if (!req.user || !req.user._id) {
-    throw new ApiError(401, "Unauthorized access - user not authenticated");
-  }
-  
-  const userId = req.user._id;
-  const { placementId } = req.params;
-
-  if (!placementId) {
-    throw new ApiError(400, "Placement ID is required");
-  }
-
-  // Check if the placement exists
-  const placement = await Placement.findById(placementId);
-  if (!placement) {
-    throw new ApiError(404, "Placement not found");
-  }
-
-  // Check if student has already registered
-  const existingRegistration = await PlacementRegistration.findOne({
-    student: userId,
-    placement: placementId
-  });
-  
-  if (existingRegistration) {
-    throw new ApiError(409, "You have already registered for this placement");
-  }
-
-  const resumeLocalPath = req.files?.resume?.[0]?.path;
-  if (!resumeLocalPath) {
-    throw new ApiError(400, "Resume file is required");
-  }
-
-  const resume = await uploadOnCloudinary(resumeLocalPath, "resumes");
-  if (!resume?.url) {
-    throw new ApiError(400, "Resume upload failed");
-  }
-
-  const googleFormLink = req.body.googleFormLink; 
-  if (!googleFormLink) {
-    throw new ApiError(400, "Google form link is required");
-  }
-
-  const registration = await PlacementRegistration.create({
-    student: userId,
-    placement: placementId,
-    resumeLink: resume.url,
-    googleFormLink,
-  });
-
-  res.status(201).json(new ApiResponse(201, registration, "Registered for placement successfully"));
+const existingRegistration = await PlacementRegistration.findOne({
+  student: userId,
+  placement: placementId,
 });
+
+if (existingRegistration) {
+  throw new ApiError(409, "You have already registered for this placement");
+}
+
+const resumeLocalPath = req.files?.resume?.[0]?.path;
+if (!resumeLocalPath) {
+  throw new ApiError(400, "Resume file is required");
+}
+
+const resume = await uploadOnCloudinary(resumeLocalPath);
+if (!resume?.secure_url) {
+  throw new ApiError(400, "Resume upload failed");
+}
+
+const googleFormLink = req.body.googleFormLink;
+if (!googleFormLink) {
+  throw new ApiError(400, "Google form link is required");
+}
+
+const registration = await PlacementRegistration.create({
+  student: userId,
+  placement: placementId,
+  resumeLink: resume.secure_url,  // Use secure_url for safer link
+  googleFormLink,
+});
+
+res.status(201).json(new ApiResponse(201, registration, "Registered for placement successfully"));
+
 
 // 9. Superadmin views all registered students for a placement
 const getAllRegisteredStudentsForPlacement = asyncHandler(async (req, res) => {
