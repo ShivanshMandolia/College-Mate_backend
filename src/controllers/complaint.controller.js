@@ -49,6 +49,7 @@ export const getMyComplaints = asyncHandler(async (req, res, next) => {
 });
 
 // Get complaints - different view for admin and superadmin
+// Get complaints - different view for admin and superadmin
 export const getAllComplaints = asyncHandler(async (req, res, next) => {
   const userId = req.user.id;
   const user = await User.findById(userId);
@@ -59,11 +60,13 @@ export const getAllComplaints = asyncHandler(async (req, res, next) => {
     // Superadmin sees all complaints
     complaints = await Complaint.find()
       .populate("createdBy", "email")
+      .populate("assignedTo", "email name") // ✅ now included
       .sort({ createdAt: -1 });
   } else if (user.role === "admin") {
     // Admin sees only assigned complaints
     complaints = await Complaint.find({ assignedTo: userId })
       .populate("createdBy", "email")
+      .populate("assignedTo", "email name") // ✅ also included for admin view
       .sort({ createdAt: -1 });
   } else {
     return next(new ApiError(403, "Access denied."));
@@ -73,6 +76,7 @@ export const getAllComplaints = asyncHandler(async (req, res, next) => {
     new ApiResponse(200, complaints, "Complaints fetched successfully.")
   );
 });
+
 
 
 export const updateComplaintStatus = asyncHandler(async (req, res, next) => {
