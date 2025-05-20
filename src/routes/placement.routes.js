@@ -9,7 +9,8 @@ import {
   getAllPlacementsForAdmin,
   updateStudentStatus,
   registerForPlacement,
-  getAllRegisteredStudentsForPlacement
+  getAllRegisteredStudentsForPlacement,
+  getAllAdmins
 } from "../controllers/placement.controller.js";
 import { upload } from "../middlewares/multer.middleware.js";
 import { verifyJWT } from "../middlewares/auth.middleware.js";
@@ -50,6 +51,11 @@ router.get(
   "/student/all",
   verifyJWT,
   getAllPlacementsForStudent
+);
+router.get(
+  "/all-admins",
+  verifyJWT,
+  getAllAdmins
 );
 
 // 🔸 Get details of a specific placement (Student, Superadmin, or assigned Admin)
