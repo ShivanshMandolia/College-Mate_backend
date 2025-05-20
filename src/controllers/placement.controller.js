@@ -6,6 +6,7 @@ import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import Notification from "../models/notification.model.js";
 import { uploadOnCloudinary } from "../utils/cloudinary.js";
+import User from "../models/user.model.js"; // Import User model for getting admins
 
 // 1. Superadmin creates a placement
 const createPlacement = asyncHandler(async (req, res) => {
@@ -26,6 +27,20 @@ const createPlacement = asyncHandler(async (req, res) => {
   });
 
   res.status(201).json(new ApiResponse(201, placement, "Placement created successfully"));
+});
+
+// NEW FUNCTION: Get all admins for superadmin to assign
+const getAllAdmins = asyncHandler(async (req, res) => {
+  if (!req.user?.isSuperAdmin) {
+    throw new ApiError(403, "Only Superadmin can view all admins");
+  }
+
+  // Find all users with role "admin"
+  const admins = await User.find({ role: "admin" })
+    .select("_id name email") // Only select necessary fields
+    .lean();
+
+  res.status(200).json(new ApiResponse(200, admins, "All admins retrieved successfully"));
 });
 
 // New function for superadmin to assign placement to admin
@@ -418,6 +433,7 @@ const getAllRegisteredStudentsForPlacement = asyncHandler(async (req, res) => {
 
 export {
   createPlacement,
+  getAllAdmins, // Export the new function
   assignPlacementToAdmin,
   addPlacementUpdate,
   getAllPlacementsForStudent,
