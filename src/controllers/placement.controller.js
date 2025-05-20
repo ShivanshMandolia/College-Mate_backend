@@ -13,7 +13,7 @@ const createPlacement = asyncHandler(async (req, res) => {
     throw new ApiError(403, "Only Superadmin can create placement");
   }
 
-  const { companyName, jobTitle, jobDescription, eligibilityCriteria, deadline, applicationLink } = req.body;
+  const { companyName, jobTitle, jobDescription, eligibilityCriteria, deadline, applicationLink, assignedAdmin } = req.body;
 
   const placement = await Placement.create({
     companyName,
@@ -21,10 +21,35 @@ const createPlacement = asyncHandler(async (req, res) => {
     jobDescription,
     eligibilityCriteria,
     deadline,
-    applicationLink
+    applicationLink,
+    assignedAdmin // Store the admin who is assigned to this placement
   });
 
   res.status(201).json(new ApiResponse(201, placement, "Placement created successfully"));
+});
+
+// New function for superadmin to assign placement to admin
+const assignPlacementToAdmin = asyncHandler(async (req, res) => {
+  if (!req.user?.isSuperAdmin) {
+    throw new ApiError(403, "Only Superadmin can assign placements to admins");
+  }
+
+  const { placementId } = req.params;
+  const { adminId } = req.body;
+
+  if (!adminId) {
+    throw new ApiError(400, "Admin ID is required");
+  }
+
+  const placement = await Placement.findById(placementId);
+  if (!placement) {
+    throw new ApiError(404, "Placement not found");
+  }
+
+  placement.assignedAdmin = adminId;
+  await placement.save();
+
+  res.status(200).json(new ApiResponse(200, placement, "Placement assigned to admin successfully"));
 });
 
 // 2. Add update to a placement
@@ -43,6 +68,13 @@ const addPlacementUpdate = asyncHandler(async (req, res) => {
   const placement = await Placement.findById(placementId);
   if (!placement) {
     throw new ApiError(404, "Placement not found");
+  }
+
+  // Check if the user is authorized to add updates to this placement
+  if (!req.user?.isSuperAdmin) {
+    if (req.user.role !== "admin" || placement.assignedAdmin?.toString() !== req.user._id.toString()) {
+      throw new ApiError(403, "You are not authorized to update this placement");
+    }
   }
 
   const update = await Update.create({
@@ -80,7 +112,6 @@ const addPlacementUpdate = asyncHandler(async (req, res) => {
 
   res.status(201).json(new ApiResponse(201, update, "Update added to placement"));
 });
-
 
 // 3. Get all placements for a student (with registrationStatus)
 const getAllPlacementsForStudent = asyncHandler(async (req, res) => {
@@ -132,29 +163,42 @@ const getPlacementDetails = asyncHandler(async (req, res) => {
     throw new ApiError(404, "Placement not found");
   }
   
+  // Check if this is a superadmin
+  const isSuperAdmin = req.user?.isSuperAdmin;
+  
+  // Check if this is the assigned admin
+  const isAssignedAdmin = 
+    req.user.role === "admin" && 
+    placement.assignedAdmin && 
+    placement.assignedAdmin.toString() === userId.toString();
+  
   // Check if student is registered
   const registration = await PlacementRegistration.findOne({
     placement: placementId,
     student: userId,
   });
   
-  // Allow admins to view all updates
-  const isAdmin = req.user.role === "admin" || req.user.role === "superadmin" || req.user?.isSuperAdmin;
-  
-  if (!registration && !isAdmin) {
-    throw new ApiError(404, "Student not registered for this placement");
+  // Only allow access to placement details for:
+  // 1. Superadmins
+  // 2. The assigned admin
+  // 3. Students who are registered for this placement
+  if (!isSuperAdmin && !isAssignedAdmin && !registration) {
+    throw new ApiError(403, "You are not authorized to view this placement's details");
   }
   
-  // Check if student is shortlisted (be more explicit with comparison)
+  // Check if student is shortlisted
   const isShortlisted = registration && registration.status === "shortlisted";
   
   // Categorize updates with explicit check for roundType value
   const updates = placement.updates || [];
   
-  // Filter updates based on user status with a more robust check
+  // Filter updates based on user status
   let filteredUpdates;
-  if (isAdmin || isShortlisted) {
-    // Admins and shortlisted students see all updates
+  if (isSuperAdmin || isAssignedAdmin) {
+    // Superadmins and assigned admin see all updates
+    filteredUpdates = updates;
+  } else if (isShortlisted) {
+    // Shortlisted students see all updates
     filteredUpdates = updates;
   } else {
     // Non-shortlisted students only see common updates
@@ -165,7 +209,8 @@ const getPlacementDetails = asyncHandler(async (req, res) => {
   console.log({
     userId,
     userRole: req.user.role,
-    isAdmin,
+    isSuperAdmin,
+    isAssignedAdmin,
     registrationStatus: registration?.status,
     isShortlisted,
     totalUpdates: updates.length,
@@ -183,15 +228,14 @@ const getPlacementDetails = asyncHandler(async (req, res) => {
   res.status(200).json(new ApiResponse(200, responseData, "Placement details retrieved"));
 });
 
-
 // 5. Delete a placement
 const deletePlacement = asyncHandler(async (req, res) => {
   if (!req.user) {
     throw new ApiError(401, "Unauthorized access - user not authenticated");
   }
   
-  if (req.user.role !== "admin" && !req.user.isSuperAdmin) {
-    throw new ApiError(403, "Unauthorized - insufficient permissions");
+  if (!req.user?.isSuperAdmin) {
+    throw new ApiError(403, "Only Superadmin can delete placements");
   }
 
   const { placementId } = req.params;
@@ -207,13 +251,19 @@ const getAllPlacementsForAdmin = asyncHandler(async (req, res) => {
     throw new ApiError(401, "Unauthorized access - user not authenticated");
   }
   
-  if (req.user.role !== "admin" && !req.user.isSuperAdmin) {
+  let placements;
+  
+  if (req.user?.isSuperAdmin) {
+    // Superadmin sees all placements
+    placements = await Placement.find().populate("updates");
+  } else if (req.user.role === "admin") {
+    // Admin sees only assigned placements
+    placements = await Placement.find({ assignedAdmin: req.user._id }).populate("updates");
+  } else {
     throw new ApiError(403, "Unauthorized - insufficient permissions");
   }
 
-  const placements = await Placement.find().populate("updates");
-
-  res.status(200).json(new ApiResponse(200, placements, "All placements retrieved"));
+  res.status(200).json(new ApiResponse(200, placements, "Placements retrieved successfully"));
 });
 
 // 7. Update student status
@@ -229,13 +279,16 @@ const updateStudentStatus = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Invalid status");
   }
 
-  if (req.user.role !== "admin" && !req.user.isSuperAdmin) {
-    throw new ApiError(403, "Unauthorized - insufficient permissions");
-  }
-
   const placement = await Placement.findById(placementId);
   if (!placement) {
     throw new ApiError(404, "Placement not found");
+  }
+
+  // Check permissions
+  if (!req.user?.isSuperAdmin) {
+    if (req.user.role !== "admin" || placement.assignedAdmin?.toString() !== req.user._id.toString()) {
+      throw new ApiError(403, "You are not authorized to update student status for this placement");
+    }
   }
 
   const registration = await PlacementRegistration.findOneAndUpdate(
@@ -331,15 +384,10 @@ const registerForPlacement = asyncHandler(async (req, res) => {
   );
 });
 
-
-// 9. Superadmin views all registered students for a placement
+// 9. Get all registered students for a placement (for SuperAdmin or assigned Admin)
 const getAllRegisteredStudentsForPlacement = asyncHandler(async (req, res) => {
   if (!req.user) {
     throw new ApiError(401, "Unauthorized access - user not authenticated");
-  }
-  
-  if (!req.user?.isSuperAdmin) {
-    throw new ApiError(403, "Only Superadmin can view registered students for a placement");
   }
 
   const { placementId } = req.params;
@@ -350,6 +398,16 @@ const getAllRegisteredStudentsForPlacement = asyncHandler(async (req, res) => {
     throw new ApiError(404, "Placement not found");
   }
 
+  // Check permissions
+  const isAssignedAdmin = 
+    req.user.role === "admin" && 
+    placement.assignedAdmin && 
+    placement.assignedAdmin.toString() === req.user._id.toString();
+
+  if (!req.user?.isSuperAdmin && !isAssignedAdmin) {
+    throw new ApiError(403, "You are not authorized to view registered students for this placement");
+  }
+
   // Find all registrations for the placement
   const registrations = await PlacementRegistration.find({ placement: placementId })
     .populate("student", "name email rollNumber branch year") // Populate necessary student fields
@@ -358,9 +416,9 @@ const getAllRegisteredStudentsForPlacement = asyncHandler(async (req, res) => {
   res.status(200).json(new ApiResponse(200, registrations, "Registered students retrieved successfully"));
 });
 
-
 export {
   createPlacement,
+  assignPlacementToAdmin,
   addPlacementUpdate,
   getAllPlacementsForStudent,
   getPlacementDetails,
