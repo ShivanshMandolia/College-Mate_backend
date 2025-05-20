@@ -26,6 +26,10 @@ const placementSchema = new Schema(
       type: String,
       required: true,
     },
+    assignedAdmin: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User", // Reference to the admin user assigned to manage this placement
+    },
     selectedStudents: [
       {
         type: mongoose.Schema.Types.ObjectId,
