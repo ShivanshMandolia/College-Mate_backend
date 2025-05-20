@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   createPlacement,
+  assignPlacementToAdmin, // New controller for assigning placements
   addPlacementUpdate,
   getAllPlacementsForStudent,
   getPlacementDetails,
@@ -8,9 +9,8 @@ import {
   getAllPlacementsForAdmin,
   updateStudentStatus,
   registerForPlacement,
-  getAllRegisteredStudentsForPlacement  // Import the new controller
+  getAllRegisteredStudentsForPlacement
 } from "../controllers/placement.controller.js";
-
 import { upload } from "../middlewares/multer.middleware.js";
 import { verifyJWT } from "../middlewares/auth.middleware.js";
 
@@ -23,14 +23,21 @@ router.post(
   createPlacement
 );
 
-// 🔸 Add update to a specific placement
+// 🔸 Superadmin assigns a placement to an admin
+router.post(
+  "/:placementId/assign-admin",
+  verifyJWT,
+  assignPlacementToAdmin
+);
+
+// 🔸 Add update to a specific placement (Superadmin or assigned Admin only)
 router.post(
   "/:placementId/update",
   verifyJWT,
   addPlacementUpdate
 );
 
-// 🔸 Register for a specific placement
+// 🔸 Register for a specific placement (Student only)
 router.post(
   "/:placementId/register",
   verifyJWT,
@@ -45,40 +52,39 @@ router.get(
   getAllPlacementsForStudent
 );
 
-// 🔸 Student gets details of a specific placement
+// 🔸 Get details of a specific placement (Student, Superadmin, or assigned Admin)
 router.get(
-  "/student/:placementId",
+  "/:placementId",
   verifyJWT,
   getPlacementDetails
 );
 
-// 🔸 Admin/Superadmin deletes a placement
+// 🔸 Superadmin deletes a placement
 router.delete(
   "/:placementId",
   verifyJWT,
   deletePlacement
 );
 
-// 🔸 Admin/Superadmin fetches all placements
+// 🔸 Get all placements (Superadmin sees all, Admin sees only assigned ones)
 router.get(
   "/admin/all",
   verifyJWT,
   getAllPlacementsForAdmin
 );
 
-// 🔸 Admin/Superadmin updates student status
+// 🔸 Update student status (Superadmin or assigned Admin only)
 router.post(
   "/:placementId/update-status",
   verifyJWT,
   updateStudentStatus
 );
 
-
-// 🔸 Superadmin views all registered students for a specific placement
+// 🔸 View all registered students for a specific placement (Superadmin or assigned Admin only)
 router.get(
   "/:placementId/registered-students",
   verifyJWT,
-  getAllRegisteredStudentsForPlacement // Add the new route here
+  getAllRegisteredStudentsForPlacement
 );
 
 export default router;
