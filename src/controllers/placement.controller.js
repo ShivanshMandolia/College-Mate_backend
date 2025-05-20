@@ -6,7 +6,7 @@ import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import Notification from "../models/notification.model.js";
 import { uploadOnCloudinary } from "../utils/cloudinary.js";
-import User from "../models/user.model.js"; // Import User model for getting admins
+import {User} from "../models/user.model.js"; // Import User model for getting admins
 
 // 1. Superadmin creates a placement
 const createPlacement = asyncHandler(async (req, res) => {
