@@ -441,7 +441,6 @@ const registerForPlacement = asyncHandler(async (req, res) => {
     new ApiResponse(201, registration, "Successfully registered for placement")
   );
 });
-// 9. Get all registered students for a placement (for SuperAdmin or assigned Admin)
 const getAllRegisteredStudentsForPlacement = asyncHandler(async (req, res) => {
   if (!req.user) {
     throw new ApiError(401, "Unauthorized access - user not authenticated");
@@ -449,29 +448,30 @@ const getAllRegisteredStudentsForPlacement = asyncHandler(async (req, res) => {
 
   const { placementId } = req.params;
 
-  // Check if the placement exists
   const placement = await Placement.findById(placementId);
   if (!placement) {
     throw new ApiError(404, "Placement not found");
   }
 
-  // Check permissions
-  const isAssignedAdmin = 
-    req.user.role === "admin" && 
-    placement.assignedAdmin && 
-    placement.assignedAdmin.toString() === req.user._id.toString();
+  const isAssignedAdmin =
+    req.user.role === "admin" &&
+    placement.assignedAdmin &&
+    placement.assignedAdmin.equals(req.user._id);
 
-  if (!req.user?.isSuperAdmin && !isAssignedAdmin) {
+  const isSuperAdmin =
+    req.user.role === "admin" && req.user.isSuperAdmin === true;
+
+  if (!isSuperAdmin && !isAssignedAdmin) {
     throw new ApiError(403, "You are not authorized to view registered students for this placement");
   }
 
-  // Find all registrations for the placement
   const registrations = await PlacementRegistration.find({ placement: placementId })
-    .populate("student", "name email rollNumber branch year") // Populate necessary student fields
+    .populate("student", "name email rollNumber branch year")
     .lean();
 
   res.status(200).json(new ApiResponse(200, registrations, "Registered students retrieved successfully"));
 });
+
 
 export {
   createPlacement,
