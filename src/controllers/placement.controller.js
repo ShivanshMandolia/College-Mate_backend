@@ -154,6 +154,7 @@ const getAllPlacementsForStudent = asyncHandler(async (req, res) => {
 });
 
 // 4. Get placement details
+// Updated getPlacementDetails function for your controller
 const getPlacementDetails = asyncHandler(async (req, res) => {
   if (!req.user || !req.user._id) {
     throw new ApiError(401, "Unauthorized access - user not authenticated");
@@ -193,11 +194,11 @@ const getPlacementDetails = asyncHandler(async (req, res) => {
     student: userId,
   });
   
-  // Only allow access to placement details for:
-  // 1. Superadmins
-  // 2. The assigned admin
-  // 3. Students who are registered for this placement
- 
+  // Determine registration status
+  let registrationStatus = 'not_registered';
+  if (registration) {
+    registrationStatus = registration.status; // This will be 'registered', 'shortlisted', or 'rejected'
+  }
   
   // Check if student is shortlisted
   const isShortlisted = registration && registration.status === "shortlisted";
@@ -210,12 +211,18 @@ const getPlacementDetails = asyncHandler(async (req, res) => {
   if (isSuperAdmin || isAssignedAdmin) {
     // Superadmins and assigned admin see all updates
     filteredUpdates = updates;
-  } else if (isShortlisted) {
-    // Shortlisted students see all updates
-    filteredUpdates = updates;
+  } else if (registration) {
+    // Registered students
+    if (isShortlisted) {
+      // Shortlisted students see all updates
+      filteredUpdates = updates;
+    } else {
+      // Non-shortlisted registered students only see common updates
+      filteredUpdates = updates.filter(update => update.roundType === "common");
+    }
   } else {
-    // Non-shortlisted students only see common updates
-    filteredUpdates = updates.filter(update => update.roundType === "common");
+    // Non-registered students see no updates
+    filteredUpdates = [];
   }
   
   // Enhanced debugging
@@ -224,7 +231,8 @@ const getPlacementDetails = asyncHandler(async (req, res) => {
     userRole: req.user.role,
     isSuperAdmin,
     isAssignedAdmin,
-    registrationStatus: registration?.status,
+    registrationExists: !!registration,
+    registrationStatus,
     isShortlisted,
     totalUpdates: updates.length,
     commonUpdates: updates.filter(u => u.roundType === "common").length,
@@ -232,10 +240,11 @@ const getPlacementDetails = asyncHandler(async (req, res) => {
     filteredUpdates: filteredUpdates.length
   });
   
-  // Construct response with filtered updates
+  // Construct response with filtered updates and registration status
   const responseData = {
     ...placement,
     updates: filteredUpdates,
+    registrationStatus, // Add registration status to response
   };
   
   res.status(200).json(new ApiResponse(200, responseData, "Placement details retrieved"));
