@@ -22,8 +22,8 @@ const registrationSchema = new Schema(
     },
     status: {
       type: String,
-      enum: ["registered", "shortlisted", "rejected"], // Added "registered" status
-      default: "rejected", // Changed default to "registered"
+      enum: ["registered", "shortlisted", "rejected"],
+      default: "registered", // ✅ FIXED: Changed from "rejected" to "registered"
     },
     // Optional: Add additional fields for better tracking
     appliedAt: {
@@ -63,26 +63,3 @@ registrationSchema.pre('save', function(next) {
   }
   next();
 });
-
-// Add static method to get registration statistics
-registrationSchema.statics.getRegistrationStats = async function(placementId) {
-  const stats = await this.aggregate([
-    { $match: { placement: new mongoose.Types.ObjectId(placementId) } },
-    {
-      $group: {
-        _id: '$status',
-        count: { $sum: 1 }
-      }
-    }
-  ]);
-  
-  return stats.reduce((acc, stat) => {
-    acc[stat._id] = stat.count;
-    return acc;
-  }, { registered: 0, shortlisted: 0, rejected: 0 });
-};
-
-export const PlacementRegistration = mongoose.model(
-  "PlacementRegistration",
-  registrationSchema
-);
