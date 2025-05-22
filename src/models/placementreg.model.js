@@ -63,3 +63,8 @@ registrationSchema.pre('save', function(next) {
   }
   next();
 });
+
+export const PlacementRegistration = mongoose.model(
+  "PlacementRegistration",
+  registrationSchema
+);
