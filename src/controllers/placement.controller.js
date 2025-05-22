@@ -129,26 +129,48 @@ const addPlacementUpdate = asyncHandler(async (req, res) => {
 });
 
 // 3. Get all placements for a student (with registrationStatus)
+// Fixed getAllPlacementsForStudent function
 const getAllPlacementsForStudent = asyncHandler(async (req, res) => {
   if (!req.user || !req.user._id) {
     throw new ApiError(401, "Unauthorized access - user not authenticated");
   }
   
   const userId = req.user._id;
+  console.log('Getting placements for user:', userId); // Debug log
 
+  // Get all registrations for this student
   const registrations = await PlacementRegistration.find({ student: userId });
+  console.log('Found registrations:', registrations); // Debug log
+  
+  // Create a map of placement ID to registration status
   const registrationMap = {};
   registrations.forEach(r => {
     registrationMap[r.placement.toString()] = r.status;
   });
+  console.log('Registration map:', registrationMap); // Debug log
 
+  // Get all open placements
   const placements = await Placement.find({ status: "open" });
+  console.log('Found placements:', placements.length); // Debug log
 
+  // Enrich placements with registration status
   const enrichedPlacements = placements.map(p => {
     const placement = p.toObject();
-    placement.registrationStatus = registrationMap[p._id.toString()] || "not_registered";
+    const placementId = p._id.toString();
+    
+    // Set registration status based on whether student is registered or not
+    placement.registrationStatus = registrationMap[placementId] || "not_registered";
+    
+    console.log(`Placement ${placementId}: ${placement.registrationStatus}`); // Debug log
+    
     return placement;
   });
+
+  console.log('Enriched placements:', enrichedPlacements.map(p => ({
+    id: p._id,
+    company: p.companyName,
+    status: p.registrationStatus
+  }))); // Debug log
 
   res.status(200).json(new ApiResponse(200, enrichedPlacements, "Student placements retrieved"));
 });
