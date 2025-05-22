@@ -172,21 +172,13 @@ const getPlacementDetails = asyncHandler(async (req, res) => {
         path: "postedBy",
         select: "name email role",
       },
+      options: { sort: { datePosted: -1 } } // Sort updates by newest first
     })
     .lean();
   
   if (!placement) {
     throw new ApiError(404, "Placement not found");
   }
-  
-  // Check if this is a superadmin
-  const isSuperAdmin = req.user?.isSuperAdmin;
-  
-  // Check if this is the assigned admin
-  const isAssignedAdmin = 
-    req.user.role === "admin" && 
-    placement.assignedAdmin && 
-    placement.assignedAdmin.toString() === userId.toString();
   
   // Check if student is registered
   const registration = await PlacementRegistration.findOne({
@@ -200,54 +192,75 @@ const getPlacementDetails = asyncHandler(async (req, res) => {
     registrationStatus = registration.status; // This will be 'registered', 'shortlisted', or 'rejected'
   }
   
-  // Check if student is shortlisted
-  const isShortlisted = registration && registration.status === "shortlisted";
+  // Check user roles and permissions
+  const isSuperAdmin = req.user?.isSuperAdmin;
+  const isAssignedAdmin = 
+    req.user.role === "admin" && 
+    placement.assignedAdmin && 
+    placement.assignedAdmin.toString() === userId.toString();
   
-  // Categorize updates with explicit check for roundType value
+  // Get all updates
   const updates = placement.updates || [];
   
-  // Filter updates based on user status
+  // Filter updates based on user status and registration
   let filteredUpdates;
+  
   if (isSuperAdmin || isAssignedAdmin) {
     // Superadmins and assigned admin see all updates
     filteredUpdates = updates;
   } else if (registration) {
-    // Registered students
-    if (isShortlisted) {
+    // For registered students
+    if (registration.status === "shortlisted") {
       // Shortlisted students see all updates
       filteredUpdates = updates;
     } else {
-      // Non-shortlisted registered students only see common updates
+      // Registered but not shortlisted students see only common updates
       filteredUpdates = updates.filter(update => update.roundType === "common");
     }
   } else {
-    // Non-registered students see no updates
+    // Non-registered students see no updates (will be handled in frontend)
     filteredUpdates = [];
   }
   
-  // Enhanced debugging
+  // Enhanced debugging - remove in production
   console.log({
-    userId,
+    userId: userId.toString(),
     userRole: req.user.role,
     isSuperAdmin,
     isAssignedAdmin,
     registrationExists: !!registration,
     registrationStatus,
-    isShortlisted,
+    isShortlisted: registration?.status === "shortlisted",
     totalUpdates: updates.length,
     commonUpdates: updates.filter(u => u.roundType === "common").length,
     roundSpecificUpdates: updates.filter(u => u.roundType === "round-specific").length,
-    filteredUpdates: filteredUpdates.length
+    filteredUpdatesCount: filteredUpdates.length,
+    placementId: placementId
   });
   
-  // Construct response with filtered updates and registration status
+  // Construct response with all necessary data
   const responseData = {
-    ...placement,
-    updates: filteredUpdates,
-    registrationStatus, // Add registration status to response
+    _id: placement._id,
+    companyName: placement.companyName,
+    jobTitle: placement.jobTitle,
+    jobDescription: placement.jobDescription,
+    eligibilityCriteria: placement.eligibilityCriteria,
+    deadline: placement.deadline,
+    applicationLink: placement.applicationLink,
+    status: placement.status,
+    location: placement.location,
+    salary: placement.salary,
+    createdAt: placement.createdAt,
+    updatedAt: placement.updatedAt,
+    registrationStatus, // Include registration status in response
+    updates: filteredUpdates, // Include filtered updates
+    // Additional fields that might be useful
+    selectedStudents: placement.selectedStudents || [],
+    rejectedStudents: placement.rejectedStudents || [],
+    assignedAdmin: placement.assignedAdmin
   };
   
-  res.status(200).json(new ApiResponse(200, responseData, "Placement details retrieved"));
+  res.status(200).json(new ApiResponse(200, responseData, "Placement details retrieved successfully"));
 });
 
 // 5. Delete a placement
@@ -288,7 +301,7 @@ const getAllPlacementsForAdmin = asyncHandler(async (req, res) => {
   res.status(200).json(new ApiResponse(200, placements, "Placements retrieved successfully"));
 });
 
-// 7. Update student status
+/// Updated updateStudentStatus function
 const updateStudentStatus = asyncHandler(async (req, res) => {
   if (!req.user) {
     throw new ApiError(401, "Unauthorized access - user not authenticated");
@@ -298,7 +311,7 @@ const updateStudentStatus = asyncHandler(async (req, res) => {
   const placementId = req.params.placementId;
 
   if (!["shortlisted", "rejected"].includes(status)) {
-    throw new ApiError(400, "Invalid status");
+    throw new ApiError(400, "Invalid status. Must be 'shortlisted' or 'rejected'");
   }
 
   const placement = await Placement.findById(placementId);
@@ -313,15 +326,20 @@ const updateStudentStatus = asyncHandler(async (req, res) => {
     }
   }
 
+  // Update the registration with new status and tracking info
   const registration = await PlacementRegistration.findOneAndUpdate(
     { student: studentId, placement: placementId },
     {
-      student: studentId,
-      placement: placementId,
-      status
+      status,
+      statusUpdatedBy: req.user._id, // Track who updated the status
+      statusUpdatedAt: new Date()
     },
-    { new: true, upsert: true, setDefaultsOnInsert: true }
+    { new: true, runValidators: true }
   );
+
+  if (!registration) {
+    throw new ApiError(404, "Student registration not found for this placement");
+  }
 
   // Update the placement's selectedStudents or rejectedStudents array
   if (status === "shortlisted") {
@@ -336,17 +354,18 @@ const updateStudentStatus = asyncHandler(async (req, res) => {
     });
   }
 
+  // Send notification to student
   const message =
     status === "shortlisted"
-      ? `You have been shortlisted for ${placement?.companyName || 'a placement'}`
-      : `You have been rejected for ${placement?.companyName || 'a placement'}`;
+      ? `🎉 Great news! You have been shortlisted for ${placement?.companyName || 'a placement'}`
+      : `Thank you for applying to ${placement?.companyName || 'a placement'}. Unfortunately, you were not selected for this position.`;
 
   await Notification.create({ userId: studentId, message });
 
   res.status(200).json(new ApiResponse(200, registration, `Student ${status} successfully`));
 });
 
-// 8. Student registers for placement
+// Updated registerForPlacement function
 const registerForPlacement = asyncHandler(async (req, res) => {
   if (!req.user || !req.user._id) {
     throw new ApiError(401, "Unauthorized access - user not authenticated");
@@ -359,10 +378,19 @@ const registerForPlacement = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Placement ID is required");
   }
 
-  // Check if the placement exists
+  // Check if the placement exists and is still open
   const placement = await Placement.findById(placementId);
   if (!placement) {
     throw new ApiError(404, "Placement not found");
+  }
+
+  if (placement.status !== "open") {
+    throw new ApiError(400, "This placement is no longer accepting applications");
+  }
+
+  // Check if deadline has passed
+  if (new Date() > new Date(placement.deadline)) {
+    throw new ApiError(400, "Application deadline has passed");
   }
 
   // Check if student has already registered
@@ -393,19 +421,26 @@ const registerForPlacement = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Google form link is required");
   }
 
-  // Create the registration entry
+  // Create the registration entry with default status "registered"
   const registration = await PlacementRegistration.create({
     student: userId,
     placement: placementId,
-    resumeLink: resume.secure_url,  // Use secure_url from Cloudinary response
+    resumeLink: resume.secure_url,
     googleFormLink,
+    status: "registered", // Explicitly set status (though it's default)
+    appliedAt: new Date()
+  });
+
+  // Send confirmation notification
+  await Notification.create({
+    userId,
+    message: `✅ Successfully registered for ${placement.companyName}. You will receive updates about the selection process.`
   });
 
   res.status(201).json(
-    new ApiResponse(201, registration, "Registered for placement successfully")
+    new ApiResponse(201, registration, "Successfully registered for placement")
   );
 });
-
 // 9. Get all registered students for a placement (for SuperAdmin or assigned Admin)
 const getAllRegisteredStudentsForPlacement = asyncHandler(async (req, res) => {
   if (!req.user) {
