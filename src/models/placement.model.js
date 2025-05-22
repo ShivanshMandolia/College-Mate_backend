@@ -1,88 +1,56 @@
 import mongoose, { Schema } from "mongoose";
 
-const registrationSchema = new Schema(
+const placementSchema = new Schema(
   {
-    student: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User", // Links to the User model for the student
+    companyName: {
+      type: String,
       required: true,
     },
-    placement: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Placement", // Links to the Placement model
+    jobTitle: {
+      type: String,
       required: true,
     },
-    googleFormLink: {
-      type: String, // Store the Google Form link that the student will use to apply
+    jobDescription: {
+      type: String,
       required: true,
     },
-    resumeLink: {
-      type: String, // Store the link to the student's uploaded resume
+    eligibilityCriteria: {
+      type: String,
       required: true,
     },
+    deadline: {
+      type: Date,
+      required: true,
+    },
+    applicationLink: {
+      type: String,
+      required: true,
+    },
+    selectedStudents: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User", // Links to the User model for selected students
+      },
+    ],
+    rejectedStudents: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User", // Links to the User model for rejected students
+      },
+    ],
     status: {
       type: String,
-      enum: ["registered", "shortlisted", "rejected"], // Added "registered" status
-      default: "registered", // Changed default to "registered"
+      enum: ["open", "closed", "completed"],
+      default: "open",
     },
-    // Optional: Add additional fields for better tracking
-    appliedAt: {
-      type: Date,
-      default: Date.now,
-    },
-    statusUpdatedAt: {
-      type: Date,
-    },
-    statusUpdatedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User", // Track which admin updated the status
-    },
-    // Optional: Store additional application data
-    additionalDocuments: [{
-      name: String,
-      url: String,
-      uploadedAt: {
-        type: Date,
-        default: Date.now
-      }
-    }],
-    notes: {
-      type: String, // For admin notes about the application
-    }
+    updates: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Update", // Links to the updates model
+      },
+    ],
   },
   { timestamps: true }
 );
 
-// Add compound index to prevent duplicate registrations
-registrationSchema.index({ student: 1, placement: 1 }, { unique: true });
-
-// Add middleware to update statusUpdatedAt when status changes
-registrationSchema.pre('save', function(next) {
-  if (this.isModified('status')) {
-    this.statusUpdatedAt = new Date();
-  }
-  next();
-});
-
-// Add static method to get registration statistics
-registrationSchema.statics.getRegistrationStats = async function(placementId) {
-  const stats = await this.aggregate([
-    { $match: { placement: new mongoose.Types.ObjectId(placementId) } },
-    {
-      $group: {
-        _id: '$status',
-        count: { $sum: 1 }
-      }
-    }
-  ]);
-  
-  return stats.reduce((acc, stat) => {
-    acc[stat._id] = stat.count;
-    return acc;
-  }, { registered: 0, shortlisted: 0, rejected: 0 });
-};
-
-export const PlacementRegistration = mongoose.model(
-  "PlacementRegistration",
-  registrationSchema
-);
+export const Placement = mongoose.model("Placement", placementSchema);
