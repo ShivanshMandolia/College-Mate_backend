@@ -23,7 +23,7 @@ const registrationSchema = new Schema(
     status: {
       type: String,
       enum: ["registered", "shortlisted", "rejected"], // Added "registered" status
-      default: "registered", // Changed default to "registered"
+      default: "rejected", // Changed default to "registered"
     },
     // Optional: Add additional fields for better tracking
     appliedAt: {
